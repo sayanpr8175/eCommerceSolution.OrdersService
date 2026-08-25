@@ -3,7 +3,7 @@ using eCommerce.OrdersMicroservice.BusinessLogicLayer.DTO;
 using eCommerce.OrdersMicroservice.DataAccessLayer.Entities;
 using MongoDB.Driver;
 
-namespace eCommerce.OrdersMicroservice.ServiceContracts;
+namespace eCommerce.OrdersMicroservice.BusinessLogicLayer.ServiceContracts;
 
 public interface IOrdersService
 {
