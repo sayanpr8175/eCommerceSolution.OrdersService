@@ -17,6 +17,13 @@ public class OrdersRepository : IOrdersRepository
     public async Task<Order?> AddOrder(Order order)
     {
         order.OrderID = Guid.NewGuid();
+        order._id = order.OrderID;
+
+        foreach(OrderItem item in order.OrderItems)
+        {
+            item._id = Guid.NewGuid();
+        }
+
         await _orders.InsertOneAsync(order);
 
         return order;
@@ -64,6 +71,7 @@ public class OrdersRepository : IOrdersRepository
         {
             return null;
         }
+        order._id = existingOrder._id;
 
        ReplaceOneResult replacedObj = await _orders.ReplaceOneAsync(filter, order);
 

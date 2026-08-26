@@ -27,7 +27,7 @@ public class OrdersController : ControllerBase
     }
 
     // GET: /api/Orders/search/orderid/{orderID}
-    [HttpGet("/search/orderid/{orderID}")]
+    [HttpGet("search/orderid/{orderID}")]
     public async Task<OrderResponse?> GetOrderByOrderID(Guid orderID)
     {
         FilterDefinition<Order> filter = Builders<Order>.Filter.Eq(temp => temp.OrderID, orderID);
@@ -38,7 +38,7 @@ public class OrdersController : ControllerBase
     }
 
     // GET: /api/Orders/search/productid/{productID}
-    [HttpGet("/search/productid/{productID}")]
+    [HttpGet("search/productid/{productID}")]
     public async Task<IEnumerable<OrderResponse?>> GetOrdersByProductID(Guid productID)
     {
         FilterDefinition<Order> filter = Builders<Order>.Filter.ElemMatch(temp => temp.OrderItems,
@@ -51,7 +51,7 @@ public class OrdersController : ControllerBase
 
 
     // GET: /api/Orders/search/orderDate/{orderDate}
-    [HttpGet("/search/orderDate/{orderDate}")]
+    [HttpGet("search/orderDate/{orderDate}")]
     public async Task<IEnumerable<OrderResponse?>> GetOrdersByOrderDate(DateTime orderDate)
     {
         FilterDefinition<Order> filter = Builders<Order>.Filter.ElemMatch(temp => temp.OrderDate.ToString("yyyy-MM-dd"),
@@ -76,7 +76,7 @@ public class OrdersController : ControllerBase
 
         if(orderResponse == null)
         {
-            return Problem("Something went wrong while adding product");
+            return Problem("Something went wrong while adding orders");
         }
 
         return Created($"/api/Orders/search/orderid/{orderResponse?.OrderID}", orderResponse);
@@ -101,7 +101,7 @@ public class OrdersController : ControllerBase
 
         if (orderResponse == null)
         {
-            return Problem("Something went wrong while updating product");
+            return Problem("Something went wrong while updating order");
         }
 
         return Ok(orderResponse);
@@ -122,7 +122,7 @@ public class OrdersController : ControllerBase
 
         if (!orderDeletionResponse)
         {
-            return Problem("Something went wrong while deleting product");
+            return Problem("Something went wrong while deleting order");
         }
 
         return Ok(orderDeletionResponse);
@@ -130,7 +130,7 @@ public class OrdersController : ControllerBase
 
 
     // GET: /api/Orders/search/userid/{userID}
-    [HttpGet("/search/userid/{userID}")]
+    [HttpGet("search/userid/{userID}")]
     public async Task<IEnumerable<OrderResponse?>> GetOrdersByUserID(Guid userID)
     {
         FilterDefinition<Order> filter = Builders<Order>.Filter.Eq(temp => temp.UserID, userID);
