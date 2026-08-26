@@ -187,8 +187,8 @@ public class OrdersService : IOrdersService
             return null;
         }
 
-        OrderResponse addedOrderResponse = _mapper.Map<OrderResponse>(updatedOrder);
+        OrderResponse UpdatedOrderResponse = _mapper.Map<OrderResponse>(updatedOrder);
 
-        return addedOrderResponse;
+        return UpdatedOrderResponse;
     }
 }
