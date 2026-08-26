@@ -1,4 +1,7 @@
 ﻿
+using eCommerce.OrdersMicroservice.BusinessLogicLayer.Mappers;
+using eCommerce.OrdersMicroservice.BusinessLogicLayer.Validators;
+using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,6 +13,10 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         // add services into the services collection
+
+        services.AddValidatorsFromAssemblyContaining<OrderAddRequestValidator>();
+
+        services.AddAutoMapper(typeof(OrderAddRequestToOrderMappingProfile).Assembly);
 
         return services;
     }
