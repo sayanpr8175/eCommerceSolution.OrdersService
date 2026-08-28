@@ -25,7 +25,9 @@ public static class DependencyInjection
         {
             IMongoClient client = provider.GetRequiredService<IMongoClient>();
 
-            return client.GetDatabase("OrdersDatabase");
+            return client.GetDatabase(Environment.GetEnvironmentVariable("MONGODB_DATABASE"));
+
+            //OrdersDatabase
 
         });
 

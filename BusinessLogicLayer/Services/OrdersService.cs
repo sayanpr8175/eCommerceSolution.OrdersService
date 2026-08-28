@@ -18,13 +18,15 @@ public class OrdersService : IOrdersService
     private readonly IValidator<OrderUpdateRequest> _orderUpdateRequestValidator;
     private readonly IValidator<OrderItemUpdateRequest> _orderItemUpdateRequestValidator;
     private readonly IMapper _mapper;
-    private readonly IOrdersRepository _ordersRepository;
+    private IOrdersRepository _ordersRepository;
+    private UsersMicroserviceClient _userMicroserviceClient;
 
     public OrdersService(IOrdersRepository ordersRepository, IMapper mapper, 
         IValidator<OrderAddRequest> orderAddRequestValidator,
         IValidator<OrderItemAddRequest> orderItemAddRequestValidator,
         IValidator<OrderUpdateRequest> orderUpdateRequestValidator,
-        IValidator<OrderItemUpdateRequest> orderItemUpdateRequestValidator)
+        IValidator<OrderItemUpdateRequest> orderItemUpdateRequestValidator,
+        UsersMicroserviceClient userMicroserviceClient)
     {
         _orderAddRequestValidator = orderAddRequestValidator;
         _orderItemAddRequestValidator = orderItemAddRequestValidator;
@@ -32,7 +34,7 @@ public class OrdersService : IOrdersService
         _orderUpdateRequestValidator = orderUpdateRequestValidator;
         _mapper = mapper;
         _ordersRepository = ordersRepository;
-
+        _userMicroserviceClient = userMicroserviceClient;
 
     }
     public async Task<OrderResponse?> AddOrder(OrderAddRequest orderAddRequest)
@@ -65,6 +67,15 @@ public class OrdersService : IOrdersService
         }
 
         // We have to check for if UserID exists in Users microservice endpoint
+
+        UserDTO? user = await _userMicroserviceClient.GetUserByUserID(orderAddRequest.UserId);
+
+        if(user == null)
+        {
+            throw new ArgumentException("Invalid User ID");
+        }
+
+
 
         // convert data from orderAddReq to order
 
@@ -167,8 +178,13 @@ public class OrdersService : IOrdersService
 
         //TO DO: Add logic for checking if UserID exists in Users microservice
 
+        UserDTO? user = await _userMicroserviceClient.GetUserByUserID(orderUpdateRequest.UserID);
 
-        
+        if (user == null)
+        {
+            throw new ArgumentException("Invalid User ID");
+        }
+
         Order orderInput = _mapper.Map<Order>(orderUpdateRequest);
 
         
