@@ -57,7 +57,9 @@ public class OrdersService : IOrdersService
             throw new ArgumentException(errors);
         }
 
-        foreach(OrderItemAddRequest orderItemAddRequest in orderAddRequest.OrderItems)
+        List<ProductDTO?> products = new List<ProductDTO?>();
+
+        foreach (OrderItemAddRequest orderItemAddRequest in orderAddRequest.OrderItems)
         {
             ValidationResult orderItemAddRequestValidationResult = await _orderItemAddRequestValidator.ValidateAsync(orderItemAddRequest);
 
@@ -76,6 +78,7 @@ public class OrdersService : IOrdersService
                 throw new ArgumentException("Invalid Product ID");
             }
 
+            products.Add(product);
 
 
         }
@@ -109,6 +112,22 @@ public class OrdersService : IOrdersService
             return null;
         }
         OrderResponse addedOrderResponse = _mapper.Map<OrderResponse>(placedOrder);
+
+        // Load ProductName and Category in OrderItem
+
+        if (addedOrderResponse != null)
+        {
+            foreach (OrderItemResponse orderItemResponse in addedOrderResponse.OrderItems)
+            {
+                ProductDTO? productDTO = products.Where(temp => temp.ProductID == orderItemResponse.ProductID).FirstOrDefault();
+
+                if (productDTO != null)
+                {
+                    _mapper.Map<ProductDTO, OrderItemResponse>(productDTO, orderItemResponse);
+                }
+
+            }
+        }
 
         return addedOrderResponse;
     }
@@ -218,6 +237,8 @@ public class OrdersService : IOrdersService
             throw new ArgumentException(errors);
         }
 
+        List<ProductDTO> products = new List<ProductDTO>();
+
         //Validate order items
         foreach (OrderItemUpdateRequest orderItemUpdateRequest in orderUpdateRequest.OrderItems)
         {
@@ -235,6 +256,8 @@ public class OrdersService : IOrdersService
             {
                 throw new ArgumentException("Invalid Product ID");
             }
+
+            products.Add(product);
 
         }
 
@@ -265,8 +288,25 @@ public class OrdersService : IOrdersService
             return null;
         }
 
-        OrderResponse UpdatedOrderResponse = _mapper.Map<OrderResponse>(updatedOrder);
+        OrderResponse updatedOrderResponse = _mapper.Map<OrderResponse>(updatedOrder);
 
-        return UpdatedOrderResponse;
+        // Load ProductName and Category in OrderItem
+
+        if (updatedOrderResponse != null)
+        {
+            foreach (OrderItemResponse orderItemResponse in updatedOrderResponse.OrderItems)
+            {
+                ProductDTO? productDTO = products.Where(temp => temp.ProductID == orderItemResponse.ProductID).FirstOrDefault();
+
+                if (productDTO != null)
+                {
+                    _mapper.Map<ProductDTO, OrderItemResponse>(productDTO, orderItemResponse);
+                }
+
+            }
+        }
+
+
+        return updatedOrderResponse;
     }
 }
