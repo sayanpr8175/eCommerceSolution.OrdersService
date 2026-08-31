@@ -20,13 +20,15 @@ public class OrdersService : IOrdersService
     private readonly IMapper _mapper;
     private IOrdersRepository _ordersRepository;
     private UsersMicroserviceClient _userMicroserviceClient;
+    private ProductsMicroserviceClient _productsMicroserviceClient;
 
     public OrdersService(IOrdersRepository ordersRepository, IMapper mapper, 
         IValidator<OrderAddRequest> orderAddRequestValidator,
         IValidator<OrderItemAddRequest> orderItemAddRequestValidator,
         IValidator<OrderUpdateRequest> orderUpdateRequestValidator,
         IValidator<OrderItemUpdateRequest> orderItemUpdateRequestValidator,
-        UsersMicroserviceClient userMicroserviceClient)
+        UsersMicroserviceClient userMicroserviceClient,
+        ProductsMicroserviceClient productsMicroserviceClient)
     {
         _orderAddRequestValidator = orderAddRequestValidator;
         _orderItemAddRequestValidator = orderItemAddRequestValidator;
@@ -35,6 +37,7 @@ public class OrdersService : IOrdersService
         _mapper = mapper;
         _ordersRepository = ordersRepository;
         _userMicroserviceClient = userMicroserviceClient;
+        _productsMicroserviceClient = productsMicroserviceClient;
 
     }
     public async Task<OrderResponse?> AddOrder(OrderAddRequest orderAddRequest)
@@ -64,6 +67,17 @@ public class OrdersService : IOrdersService
 
                 throw new ArgumentException(errors);
             }
+
+            // To do: Check if ProductID exists or not?
+            ProductDTO? product = await _productsMicroserviceClient.GetProductByProductID(orderItemAddRequest.ProductID);
+
+            if(product == null)
+            {
+                throw new ArgumentException("Invalid Product ID");
+            }
+
+
+
         }
 
         // We have to check for if UserID exists in Users microservice endpoint
@@ -126,6 +140,8 @@ public class OrdersService : IOrdersService
 
         OrderResponse orderResponse = _mapper.Map<OrderResponse>(order);
 
+        // I have not added validation of product id here, incase later will add
+
         return orderResponse;
     }
 
@@ -135,6 +151,25 @@ public class OrdersService : IOrdersService
 
         IEnumerable<OrderResponse?> orderResponses = _mapper.Map<IEnumerable<OrderResponse>>(orders);
 
+        foreach (OrderResponse? orderResponse in orderResponses)
+        {
+            if (orderResponse == null)
+            {
+                continue;
+            }
+
+            foreach (OrderItemResponse orderItemResponse in orderResponse.OrderItems)
+            {
+                ProductDTO? productDTO = await _productsMicroserviceClient.GetProductByProductID(orderItemResponse.ProductID);
+
+                if (productDTO != null)
+                {
+                    _mapper.Map<ProductDTO, OrderItemResponse>(productDTO, orderItemResponse);
+                }
+
+            }
+        }
+
         return orderResponses.ToList();
     }
 
@@ -143,6 +178,25 @@ public class OrdersService : IOrdersService
         IEnumerable<Order?> orders = await _ordersRepository.GetOrders();
 
         IEnumerable<OrderResponse?> orderResponses = _mapper.Map<IEnumerable<OrderResponse>>(orders);
+
+        foreach(OrderResponse? orderResponse in orderResponses)
+        {
+            if(orderResponse == null)
+            {
+                continue;
+            }
+
+            foreach (OrderItemResponse orderItemResponse in orderResponse.OrderItems)
+            {
+                ProductDTO? productDTO = await _productsMicroserviceClient.GetProductByProductID(orderItemResponse.ProductID);
+
+                if(productDTO != null)
+                {
+                    _mapper.Map<ProductDTO, OrderItemResponse>(productDTO, orderItemResponse);
+                }
+                
+            }
+        }
 
         return orderResponses.ToList();
     }
@@ -174,6 +228,14 @@ public class OrdersService : IOrdersService
                 string errors = string.Join(", ", orderItemUpdateRequestValidationResult.Errors.Select(temp => temp.ErrorMessage));
                 throw new ArgumentException(errors);
             }
+
+            ProductDTO? product = await _productsMicroserviceClient.GetProductByProductID(orderItemUpdateRequest.ProductID);
+
+            if (product == null)
+            {
+                throw new ArgumentException("Invalid Product ID");
+            }
+
         }
 
         //TO DO: Add logic for checking if UserID exists in Users microservice
