@@ -1,7 +1,9 @@
 ﻿
 using Microsoft.Extensions.Logging;
 using Polly;
+using Polly.CircuitBreaker;
 using Polly.Retry;
+using System;
 
 
 namespace eCommerce.OrdersMicroservice.BusinessLogicLayer.Policies
@@ -14,6 +16,7 @@ namespace eCommerce.OrdersMicroservice.BusinessLogicLayer.Policies
         {
             _logger = logger;
         }
+
         public IAsyncPolicy<HttpResponseMessage> GetRetryPolicy()
         {
 
@@ -27,7 +30,27 @@ namespace eCommerce.OrdersMicroservice.BusinessLogicLayer.Policies
 
             return policy;
 
-
         }
+
+        public IAsyncPolicy<HttpResponseMessage> GetCircuitBreakerPolicy()
+        {
+            AsyncCircuitBreakerPolicy<HttpResponseMessage> policy = Policy.HandleResult<HttpResponseMessage>(resp => !resp.IsSuccessStatusCode)
+            .CircuitBreakerAsync(
+                handledEventsAllowedBeforeBreaking: 3,
+            durationOfBreak: TimeSpan.FromMinutes(2),
+
+            onBreak: (outcome, timespan) =>
+            {
+                _logger.LogInformation($"Circuit breaker is open for {timespan.TotalSeconds} minutes, due to consecutive 3 failures." +
+                    $" The subsequent requests will be blocked");
+
+            }, onReset : () =>
+            {
+                _logger.LogInformation($"Circuit breaker is closed, subsequent requests will be allowed");
+            });
+
+            return policy;
+        }
+
     }
 }
