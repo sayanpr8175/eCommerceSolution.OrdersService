@@ -34,15 +34,21 @@ builder.Services.AddTransient<IUsersMicroservicePolicies, UsersMicroservicePolic
 
 builder.Services.AddTransient<IProductsMicroservicePolicies, ProductsMicroservicePolicies>();
 
+builder.Services.AddTransient<IPollyPolicies, PollyPolicies>();
+
 builder.Services.AddHttpClient<UsersMicroserviceClient>(client =>
 {
     client.BaseAddress = new
     Uri($"http://{builder.Configuration["UsersMicroserviceName"]}:{builder.Configuration["UsersMicroservicePort"]}");
 
 })
-    .AddPolicyHandler(builder.Services.BuildServiceProvider().GetRequiredService<IUsersMicroservicePolicies>().GetRetryPolicy())
-    .AddPolicyHandler(builder.Services.BuildServiceProvider().GetRequiredService<IUsersMicroservicePolicies>().GetCircuitBreakerPolicy())
-    .AddPolicyHandler(builder.Services.BuildServiceProvider().GetRequiredService<IUsersMicroservicePolicies>().GetTimeoutPolicy());
+    .AddPolicyHandler(builder.Services.BuildServiceProvider()
+    .GetRequiredService<IUsersMicroservicePolicies>().GetCombinedPolicy());
+
+
+    //.AddPolicyHandler(builder.Services.BuildServiceProvider().GetRequiredService<IUsersMicroservicePolicies>().GetRetryPolicy())
+    //.AddPolicyHandler(builder.Services.BuildServiceProvider().GetRequiredService<IUsersMicroservicePolicies>().GetCircuitBreakerPolicy())
+    //.AddPolicyHandler(builder.Services.BuildServiceProvider().GetRequiredService<IUsersMicroservicePolicies>().GetTimeoutPolicy());
 
 builder.Services.AddHttpClient<ProductsMicroserviceClient>(client =>
 {
@@ -50,7 +56,9 @@ builder.Services.AddHttpClient<ProductsMicroserviceClient>(client =>
     Uri($"http://{builder.Configuration["ProductsMicroserviceName"]}:{builder.Configuration["ProductsMicroservicePort"]}");
     
 }).AddPolicyHandler(builder.Services.BuildServiceProvider()
-.GetRequiredService<IProductsMicroservicePolicies>().GetFallBackPolicy());
+.GetRequiredService<IProductsMicroservicePolicies>().GetFallBackPolicy())
+.AddPolicyHandler(builder.Services.BuildServiceProvider()
+.GetRequiredService<IProductsMicroservicePolicies>().GetBulkHeadIsolationPolicy());
 
 var app = builder.Build();
 

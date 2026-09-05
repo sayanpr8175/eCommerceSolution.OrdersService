@@ -1,14 +1,12 @@
-﻿using Amazon.Runtime.Internal.Util;
+﻿
 using eCommerce.OrdersMicroservice.BusinessLogicLayer.DTO;
 using Microsoft.Extensions.Logging;
 using Polly;
+using Polly.Bulkhead;
 using Polly.Fallback;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
+
 
 namespace eCommerce.OrdersMicroservice.BusinessLogicLayer.Policies;
 
@@ -19,6 +17,25 @@ public class ProductsMicroservicePolicies : IProductsMicroservicePolicies
     {
         _logger = logger;
     }
+
+    public IAsyncPolicy<HttpResponseMessage> GetBulkHeadIsolationPolicy()
+    {
+        AsyncBulkheadPolicy<HttpResponseMessage> policy = 
+        Policy.BulkheadAsync<HttpResponseMessage>(
+            maxParallelization: 2, // Allows upto 2 concurrent reqs
+            maxQueuingActions: 40, // Queue upto 40 additional reqs
+            onBulkheadRejectedAsync: (context) =>
+            {
+                _logger.LogWarning("BulkheadIsolation triggered. " +
+                    "Can't send any more requests since the queue is full");
+
+                throw new BulkheadRejectedException("Bulkhead queue is full");
+            }
+            );
+
+        return policy;
+    }
+
     public IAsyncPolicy<HttpResponseMessage> GetFallBackPolicy()
     {
         AsyncFallbackPolicy<HttpResponseMessage> policy = Policy.HandleResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
