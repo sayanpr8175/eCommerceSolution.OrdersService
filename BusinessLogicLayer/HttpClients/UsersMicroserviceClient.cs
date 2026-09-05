@@ -1,6 +1,7 @@
 ﻿using Amazon.Runtime.Internal.Util;
 using Microsoft.Extensions.Logging;
 using Polly.CircuitBreaker;
+using Polly.Timeout;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -69,14 +70,26 @@ public class UsersMicroserviceClient
                 "Circuit breaker is in Open State");
 
              return new UserDTO(
-                    PersonName: "Temporarily not available",
-                    Email: "Temporarily not available",
-                    Gender: "Temporarily not available",
+                    PersonName: "Temporarily unavailable (Circuit breaker)",
+                    Email: "Temporarily unavailable (Circuit breaker)",
+                    Gender: "Temporarily unavailable (Circuit breaker)",
                     UserId: Guid.Empty
              );
 
         }
-        
+        catch (TimeoutRejectedException ex)
+        {
+            _logger.LogError(ex, "Timeout occurred while fetching user data. Returning dummy data.");
+
+            return new UserDTO(
+                   PersonName: "Temporarily unavailable (Timeout)",
+                   Email: "Temporarily not available (Timeout)",
+                   Gender: "Temporarily not available (Timeout)",
+                   UserId: Guid.Empty
+            );
+
+        }
+
 
     }
 
