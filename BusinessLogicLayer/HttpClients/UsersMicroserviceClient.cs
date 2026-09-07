@@ -1,4 +1,6 @@
 ﻿using Amazon.Runtime.Internal.Util;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Polly.CircuitBreaker;
 using Polly.Timeout;
@@ -7,6 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace eCommerce.OrdersMicroservice.BusinessLogicLayer.DTO;
@@ -15,14 +18,27 @@ public class UsersMicroserviceClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<UsersMicroserviceClient> _logger;
-    public UsersMicroserviceClient(HttpClient httpClient, ILogger<UsersMicroserviceClient> logger)
+    private readonly IDistributedCache _distributedCache;
+    public UsersMicroserviceClient(HttpClient httpClient,
+        ILogger<UsersMicroserviceClient> logger,
+        IDistributedCache distributedCache)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _distributedCache = distributedCache;
     }
 
     public async Task<UserDTO?> GetUserByUserID(Guid userID)
     {
+
+        string cacheKey = $"user:{userID}";
+        string? cachedUser = await _distributedCache.GetStringAsync(cacheKey);
+
+        if(cachedUser!=null)
+        {
+            UserDTO? userObj = JsonSerializer.Deserialize<UserDTO>(cachedUser);
+            return userObj;
+        }
 
         try
         {
@@ -30,7 +46,19 @@ public class UsersMicroserviceClient
 
             if (!response.IsSuccessStatusCode)
             {
-                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                if(response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+                {
+                    UserDTO? fallBackUser = await response.Content.ReadFromJsonAsync<UserDTO>();
+
+                    if(fallBackUser == null)
+                    {
+                        throw new BadHttpRequestException("fallback user failed!");
+                    }
+
+                    return fallBackUser;
+                }
+
+                else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
                     return null;
                 }
@@ -61,6 +89,15 @@ public class UsersMicroserviceClient
             {
                 throw new ArgumentException("Invalid User ID");
             }
+
+            string cacheKeyForWrite = $"user:{userID}";
+            string userJson = JsonSerializer.Serialize(user);
+
+            DistributedCacheEntryOptions options = new DistributedCacheEntryOptions()
+                .SetAbsoluteExpiration(TimeSpan.FromSeconds(300))
+                .SetSlidingExpiration(TimeSpan.FromSeconds(100));
+
+            await _distributedCache.SetStringAsync(cacheKeyForWrite, userJson, options);
 
             return user;
         }
