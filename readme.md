@@ -19,12 +19,26 @@
 
 ---
 
+## 📂 All Microservices Repositories
+
+| Service | Repository |
+|---|---|
+| 🏷️ Products | [eCommerceSolution.ProductsService](https://github.com/sayanpr8175/eCommerceSolution.ProductsService) |
+| 👤 Users | [eCommerceSolution.UsersService](https://github.com/sayanpr8175/eCommerceSolution.UsersService) |
+| 📦 Orders | [eCommerceSolution.OrdersService](https://github.com/sayanpr8175/eCommerceSolution.OrdersService) |
+
+---
+
+
+---
+
 ## 📑 Table of Contents
 
 - [Overview](#-overview)
 - [Architecture](#-architecture)
 - [Tech Stack](#-tech-stack)
 - [The Services](#-the-services)
+- [Resilience & Caching](#-resilience--caching)
 - [How a Request Flows](#-how-a-request-flows)
 - [API Reference](#-api-reference)
 - [Getting Started](#-getting-started)
@@ -47,6 +61,8 @@ This solution breaks a typical eCommerce backend into three independently deploy
 | 🐳 **Fully containerized** | Services *and* databases, orchestrated with Docker Compose |
 | 🔒 **Network isolation** | Each database sits on a private bridge network only its owner can reach |
 | 🔗 **Service-to-service calls** | Orders composes data from Users and Products at request time |
+| 🛡️ **Fault tolerance** | Polly policies on every outbound call — retry, circuit breaker, timeout, fallback, bulkhead |
+| ⚡ **Distributed caching** | Redis read-through cache in front of both cross-service lookups |
 
 ---
 
@@ -58,7 +74,6 @@ flowchart TB
 
     subgraph edge["🚪 Edge Layer"]
         OC["Ocelot API Gateway<br/><i>routing · aggregation · rate limiting</i>"]
-        RD[("⚡ Redis<br/>response cache")]
     end
 
     subgraph mesh["🔗 ecommerce-network (shared)"]
@@ -67,6 +82,7 @@ flowchart TB
         USR["👤 <b>Users Microservice</b><br/>ASP.NET Core Web API<br/>Auth + Profiles"]
     end
 
+    RD[("⚡ Redis<br/>user + product cache")]
     MG[("🍃 MongoDB<br/>OrdersDatabase")]
     MY[("🐬 MySQL<br/>ecommerceproductsdatabase")]
     PG[("🐘 PostgreSQL<br/>eCommerceUsers")]
@@ -75,10 +91,11 @@ flowchart TB
     OC --> ORD
     OC --> PRD
     OC --> USR
-    OC -.-> RD
 
-    ORD -->|"HTTP + Polly<br/>retry · circuit breaker"| USR
-    ORD -->|"HTTP + Polly<br/>retry · circuit breaker"| PRD
+    ORD -.->|"read-through cache"| RD
+
+    ORD -->|"Polly: retry · breaker · timeout"| USR
+    ORD -->|"Polly: fallback · bulkhead"| PRD
 
     ORD ==>|"orders-mongodb-network"| MG
     PRD ==>|"products-mysql-network"| MY
@@ -88,14 +105,16 @@ flowchart TB
     classDef db fill:#1f6f43,stroke:#124228,color:#ffffff,stroke-width:2px
     classDef edgeNode fill:#0f4c81,stroke:#08304f,color:#ffffff,stroke-width:2px
     classDef client fill:#444444,stroke:#222222,color:#ffffff,stroke-width:2px
+    classDef cache fill:#a4373a,stroke:#6b2224,color:#ffffff,stroke-width:2px
 
     class ORD,PRD,USR svc
     class MG,MY,PG db
-    class OC,RD edgeNode
+    class OC edgeNode
+    class RD cache
     class UI client
 ```
 
-> **Reading the diagram:** solid arrows between services are synchronous HTTP calls wrapped in Polly policies. Thick arrows are database connections that live on private networks — the Orders service physically cannot reach the Products database, and vice versa.
+> **Reading the diagram:** solid arrows between services are synchronous HTTP calls, each wrapped in its own Polly policy set — the two dependencies are protected differently, see [Resilience & Caching](#-resilience--caching). The dashed arrow is the Redis lookup that runs *before* either HTTP call. Thick arrows are database connections that live on private networks — the Orders service physically cannot reach the Products database, and vice versa.
 
 ---
 
@@ -107,8 +126,8 @@ flowchart TB
 | **API Styles** | ![Minimal APIs](https://img.shields.io/badge/Minimal%20APIs-512BD4?style=flat-square&logo=dotnet&logoColor=white) ![Controllers](https://img.shields.io/badge/MVC%20Controllers-512BD4?style=flat-square&logo=dotnet&logoColor=white) ![Swagger](https://img.shields.io/badge/Swagger-85EA2D?style=flat-square&logo=swagger&logoColor=black) |
 | **Databases** | ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat-square&logo=mysql&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white) |
 | **Validation & Mapping** | ![FluentValidation](https://img.shields.io/badge/FluentValidation-2E8B57?style=flat-square) ![AutoMapper](https://img.shields.io/badge/AutoMapper-BE2EDD?style=flat-square) |
-| **Resilience** | ![Polly](https://img.shields.io/badge/Polly-8A2BE2?style=flat-square) — wait & retry, circuit breaker, timeout, fallback |
-| **Caching** | ![Redis](https://img.shields.io/badge/Redis-FF4438?style=flat-square&logo=redis&logoColor=white) |
+| **Resilience** | ![Polly](https://img.shields.io/badge/Polly-8A2BE2?style=flat-square) — wait & retry, circuit breaker, timeout, fallback, bulkhead isolation |
+| **Caching** | ![Redis](https://img.shields.io/badge/Redis-FF4438?style=flat-square&logo=redis&logoColor=white) ![IDistributedCache](https://img.shields.io/badge/IDistributedCache-512BD4?style=flat-square&logo=dotnet&logoColor=white) |
 | **API Gateway** | ![Ocelot](https://img.shields.io/badge/Ocelot-5C2D91?style=flat-square) |
 | **Messaging** | ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=flat-square&logo=rabbitmq&logoColor=white) ![Service Bus](https://img.shields.io/badge/Azure%20Service%20Bus-0072C6?style=flat-square&logo=microsoftazure&logoColor=white) |
 | **Containers** | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) ![Compose](https://img.shields.io/badge/Docker%20Compose-2496ED?style=flat-square&logo=docker&logoColor=white) |
@@ -127,6 +146,53 @@ flowchart TB
 | 📦 **Orders** | Order lifecycle + orchestration across services | ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white) | Controllers | `http://localhost:7000` |
 
 **Orders is the hub.** When an order comes in, it calls Users to confirm who is buying and Products to confirm what is being bought, then persists the composed order document in MongoDB.
+
+---
+
+## 🛡️ Resilience & Caching
+
+Every outbound call from Orders is wrapped in Polly, and both cross-service lookups sit behind a Redis read-through cache. The two dependencies are deliberately protected in different ways.
+
+### Policy matrix
+
+| Outbound call | Policies | Configuration |
+|---|---|---|
+| **Orders → Users** | Retry → Circuit Breaker → Timeout | 5 retries, exponential backoff `2^n` seconds · breaker opens after 3 consecutive failures and stays open 2 minutes · 5 s timeout |
+| **Orders → Products** | Fallback + Bulkhead Isolation | 2 concurrent requests, queue of 40 · fallback returns `503` carrying placeholder product JSON |
+
+`UsersMicroservicePolicies.GetCombinedPolicy()` composes the first three with `Policy.WrapAsync(retry, circuitBreaker, timeout)`. Retry is outermost, so every attempt passes through the breaker and is individually bounded by the timeout — and a timeout counts as a failure the breaker can trip on.
+
+Policies live behind interfaces so they can be reused and tested independently:
+
+| Interface | Members |
+|---|---|
+| `IPollyPolicies` | `GetRetryPolicy(retryCount)`, `GetCircuitBreakerPolicy(handledEventsAllowedBeforeBreaking, durationOfBreak)`, `GetTimeoutPolicy(timeout)` |
+| `IUsersMicroservicePolicies` | `GetCombinedPolicy()` |
+| `IProductsMicroservicePolicies` | `GetFallBackPolicy()`, `GetBulkHeadIsolationPolicy()` |
+
+### Degraded responses
+
+An unhealthy dependency never takes the request down. Each failure mode is caught and answered with a placeholder DTO, so the order still completes:
+
+| Condition | Caught as | What the caller sees |
+|---|---|---|
+| Breaker open (Users) | `BrokenCircuitException` | User fields read `Temporarily unavailable (Circuit breaker)` |
+| Timeout (Users) | `TimeoutRejectedException` | User fields read `Temporarily unavailable (Timeout)` |
+| Bulkhead queue full (Products) | `BulkheadRejectedException` | Product fields read `Services Unavailable (Bulkhead isolation blocked)` |
+| Fallback fired | `503` from the fallback policy | Placeholder DTO deserialized from the fallback payload |
+| Dependency returns `404` | — | `null`, surfaced as a normal not-found |
+| Dependency returns `400` | — | `HttpRequestException` — a genuine client error is *not* masked |
+
+### Redis cache
+
+Both clients check Redis before making an HTTP call and populate it on the way back.
+
+| Key pattern | Value | Absolute TTL | Sliding TTL |
+|---|---|---|---|
+| `user:{userID}` | serialized `UserDTO` | 300 s | 100 s |
+| `product:{productID}` | serialized `ProductDTO` | 30 s | 10 s |
+
+Products expire an order of magnitude faster than users because price and stock change constantly while a profile rarely does. Placeholder DTOs from any degraded path are returned but **never written to the cache**, so a brief outage cannot poison lookups for the rest of the TTL.
 
 ---
 
@@ -478,11 +544,12 @@ Services resolve each other by container name via Docker's built-in DNS — no h
 - [x] Full containerization of services **and** databases
 - [x] Docker Compose orchestration with isolated bridge networks
 - [x] Automatic database seeding via init scripts
+- [x] ![Polly](https://img.shields.io/badge/Polly-8A2BE2?style=flat-square) **Fault tolerance** — retry, circuit breaker and timeout on Users calls; fallback and bulkhead isolation on Products calls
+- [x] ![Redis](https://img.shields.io/badge/Redis-FF4438?style=flat-square&logo=redis&logoColor=white) **Distributed caching** — read-through cache for user and product lookups, with per-entity TTLs
+- [x] Graceful degradation — placeholder DTOs instead of thrown exceptions when a dependency is unhealthy
 
 ### 🚧 In Progress
 
-- [ ] ![Polly](https://img.shields.io/badge/Polly-8A2BE2?style=flat-square) **Fault tolerance** — wait & retry, circuit breaker, timeout and fallback policies on all outbound HTTP calls
-- [ ] ![Redis](https://img.shields.io/badge/Redis-FF4438?style=flat-square&logo=redis&logoColor=white) **Distributed caching** — cache product and user lookups to cut cross-service chatter
 - [ ] ![Ocelot](https://img.shields.io/badge/Ocelot-5C2D91?style=flat-square) **API Gateway** — single entry point, routing, aggregation, rate limiting
 
 ### 📅 Planned
@@ -540,17 +607,6 @@ flowchart TB
     class CACHE,DBS store
 ```
 
----
-
-## 📂 Repositories
-
-| Service | Repository |
-|---|---|
-| 🏷️ Products | [eCommerceSolution.ProductsService](https://github.com/sayanpr8175/eCommerceSolution.ProductsService) |
-| 👤 Users | [eCommerceSolution.UsersService](https://github.com/sayanpr8175/eCommerceSolution.UsersService) |
-| 📦 Orders | [eCommerceSolution.OrdersService](https://github.com/sayanpr8175/eCommerceSolution.OrdersService) |
-
----
 
 <div align="center">
 
