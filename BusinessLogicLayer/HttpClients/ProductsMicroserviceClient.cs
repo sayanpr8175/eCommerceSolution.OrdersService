@@ -50,7 +50,14 @@ public class ProductsMicroserviceClient
 
             if (!response.IsSuccessStatusCode)
             {
-                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                if(response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+                {
+                    ProductDTO? productResponseFromFallback = await response.Content.ReadFromJsonAsync<ProductDTO>();
+
+                    return productResponseFromFallback;
+                }
+
+                else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
                     return null;
                 }
