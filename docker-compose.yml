@@ -13,6 +13,8 @@ services:
      - UsersMicroservicePort=9090
      - ProductsMicroserviceName=products-microservice
      - ProductsMicroservicePort=8080
+     - REDIS_HOST=redis
+     - REDIS_PORT=6379
     ports:
      - "7000:8080"
     networks:
