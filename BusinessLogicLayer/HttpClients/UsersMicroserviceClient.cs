@@ -1,16 +1,13 @@
-﻿using Amazon.Runtime.Internal.Util;
+﻿
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Polly.CircuitBreaker;
 using Polly.Timeout;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.Http.Json;
-using System.Text;
+
 using System.Text.Json;
-using System.Threading.Tasks;
+
 
 namespace eCommerce.OrdersMicroservice.BusinessLogicLayer.DTO;
 
@@ -42,7 +39,7 @@ public class UsersMicroserviceClient
 
         try
         {
-            HttpResponseMessage response = await _httpClient.GetAsync($"/api/users/{userID}");
+            HttpResponseMessage response = await _httpClient.GetAsync($"/gateway/users/{userID}");
 
             if (!response.IsSuccessStatusCode)
             {

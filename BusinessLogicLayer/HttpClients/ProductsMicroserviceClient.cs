@@ -1,14 +1,9 @@
-﻿using Amazon.Runtime.Internal.Util;
-using Microsoft.Extensions.Caching.Distributed;
+﻿using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Polly.Bulkhead;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
+
 
 namespace eCommerce.OrdersMicroservice.BusinessLogicLayer.DTO;
 
@@ -46,7 +41,7 @@ public class ProductsMicroserviceClient
                 return productFromCache;
             }
 
-            HttpResponseMessage response = await _httpClient.GetAsync($"/api/products/search/product-id/{productID}");
+            HttpResponseMessage response = await _httpClient.GetAsync($"/gateway/products/search/product-id/{productID}");
 
             if (!response.IsSuccessStatusCode)
             {
