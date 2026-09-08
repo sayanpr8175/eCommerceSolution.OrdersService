@@ -2,10 +2,11 @@
 
 # 🛒 eCommerce Microservices Application
 
-**A production-style eCommerce backend built with C# / .NET, split into three independent microservices — each with its own database, its own container, and its own isolated Docker network.**
+**A production-style eCommerce backend built with C# / .NET, split into three independent microservices — each with its own database, its own container, and its own isolated Docker network — fronted by an Ocelot API Gateway.**
 
 ![C#](https://img.shields.io/badge/C%23-239120?style=for-the-badge&logo=csharp&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)
+![Ocelot](https://img.shields.io/badge/Ocelot-5C2D91?style=for-the-badge)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
@@ -19,16 +20,14 @@
 
 ---
 
-## 📂 All Microservices Repositories
+## 📂 All Repositories
 
-| Service | Repository |
+| Component | Repository |
 |---|---|
+| 🚪 API Gateway | [eCommerceSolution.ApiGateway](https://github.com/sayanpr8175/eCommerceSolution.ApiGateway) |
 | 🏷️ Products | [eCommerceSolution.ProductsService](https://github.com/sayanpr8175/eCommerceSolution.ProductsService) |
 | 👤 Users | [eCommerceSolution.UsersService](https://github.com/sayanpr8175/eCommerceSolution.UsersService) |
 | 📦 Orders | [eCommerceSolution.OrdersService](https://github.com/sayanpr8175/eCommerceSolution.OrdersService) |
-
----
-
 
 ---
 
@@ -38,6 +37,7 @@
 - [Architecture](#-architecture)
 - [Tech Stack](#-tech-stack)
 - [The Services](#-the-services)
+- [API Gateway](#-api-gateway)
 - [Resilience & Caching](#-resilience--caching)
 - [How a Request Flows](#-how-a-request-flows)
 - [API Reference](#-api-reference)
@@ -46,22 +46,23 @@
 - [Docker Networks](#-docker-networks)
 - [Roadmap](#-roadmap)
 - [Target Cloud Architecture](#-target-cloud-architecture)
-- [Repositories](#-repositories)
 
 ---
 
 ## 🎯 Overview
 
-This solution breaks a typical eCommerce backend into three independently deployable services. Each one owns its data (database-per-service pattern), runs in its own container, and talks to the others only over the network — never through a shared database.
+This solution breaks a typical eCommerce backend into three independently deployable services behind a single gateway. Each service owns its data (database-per-service pattern), runs in its own container, and talks to the others only over the network — never through a shared database.
 
 | | |
 |---|---|
 | 🧩 **3 microservices** | Products, Users, Orders |
+| 🚪 **1 API Gateway** | Ocelot — single entry point on port `4000`, all traffic under `/gateway/*` |
 | 🗄️ **3 databases** | MySQL, PostgreSQL, MongoDB — one per service |
 | 🐳 **Fully containerized** | Services *and* databases, orchestrated with Docker Compose |
 | 🔒 **Network isolation** | Each database sits on a private bridge network only its owner can reach |
 | 🔗 **Service-to-service calls** | Orders composes data from Users and Products at request time |
-| 🛡️ **Fault tolerance** | Polly policies on every outbound call — retry, circuit breaker, timeout, fallback, bulkhead |
+| 🛡️ **Fault tolerance** | Two layers — Polly policies inside Orders, plus Ocelot QoS at the edge |
+| 🚦 **Rate limiting** | Enforced at the gateway on the Products collection route |
 | ⚡ **Distributed caching** | Redis read-through cache in front of both cross-service lookups |
 
 ---
@@ -72,11 +73,8 @@ This solution breaks a typical eCommerce backend into three independently deploy
 flowchart TB
     UI["🖥️ Client<br/>Web / Mobile / Postman"]
 
-    subgraph edge["🚪 Edge Layer"]
-        OC["Ocelot API Gateway<br/><i>routing · aggregation · rate limiting</i>"]
-    end
-
     subgraph mesh["🔗 ecommerce-network (shared)"]
+        OC["🚪 <b>Ocelot API Gateway</b><br/>:4000 · /gateway/*<br/><i>routing · QoS · rate limiting</i>"]
         ORD["📦 <b>Orders Microservice</b><br/>ASP.NET Core Web API<br/>Controllers"]
         PRD["🏷️ <b>Products Microservice</b><br/>ASP.NET Core<br/>Minimal APIs"]
         USR["👤 <b>Users Microservice</b><br/>ASP.NET Core Web API<br/>Auth + Profiles"]
@@ -89,7 +87,7 @@ flowchart TB
 
     UI --> OC
     OC --> ORD
-    OC --> PRD
+    OC -->|"QoS breaker · 500 ms timeout<br/>3 req / 10 s"| PRD
     OC --> USR
 
     ORD -.->|"read-through cache"| RD
@@ -114,7 +112,7 @@ flowchart TB
     class UI client
 ```
 
-> **Reading the diagram:** solid arrows between services are synchronous HTTP calls, each wrapped in its own Polly policy set — the two dependencies are protected differently, see [Resilience & Caching](#-resilience--caching). The dashed arrow is the Redis lookup that runs *before* either HTTP call. Thick arrows are database connections that live on private networks — the Orders service physically cannot reach the Products database, and vice versa.
+> **Reading the diagram:** the gateway is the only component exposed to clients, and it sits on `ecommerce-network` so it can resolve the three services by container name. Solid arrows between services are synchronous HTTP calls, each wrapped in its own Polly policy set — the two dependencies are protected differently, see [Resilience & Caching](#-resilience--caching). The dashed arrow is the Redis lookup that runs *before* either HTTP call. Thick arrows are database connections that live on private networks — the Orders service physically cannot reach the Products database, and vice versa.
 
 ---
 
@@ -122,13 +120,13 @@ flowchart TB
 
 | Area | Technologies |
 |---|---|
-| **Language & Runtime** | ![C#](https://img.shields.io/badge/C%23-239120?style=flat-square&logo=csharp&logoColor=white) ![.NET](https://img.shields.io/badge/ASP.NET%20Core-512BD4?style=flat-square&logo=dotnet&logoColor=white) |
+| **Language & Runtime** | ![C#](https://img.shields.io/badge/C%23-239120?style=flat-square&logo=csharp&logoColor=white) ![.NET](https://img.shields.io/badge/ASP.NET%20Core%208.0-512BD4?style=flat-square&logo=dotnet&logoColor=white) |
 | **API Styles** | ![Minimal APIs](https://img.shields.io/badge/Minimal%20APIs-512BD4?style=flat-square&logo=dotnet&logoColor=white) ![Controllers](https://img.shields.io/badge/MVC%20Controllers-512BD4?style=flat-square&logo=dotnet&logoColor=white) ![Swagger](https://img.shields.io/badge/Swagger-85EA2D?style=flat-square&logo=swagger&logoColor=black) |
+| **API Gateway** | ![Ocelot](https://img.shields.io/badge/Ocelot%2023.4.3-5C2D91?style=flat-square) ![Polly Provider](https://img.shields.io/badge/Ocelot.Provider.Polly%2023.3.3-8A2BE2?style=flat-square) — routing, QoS, rate limiting |
 | **Databases** | ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat-square&logo=mysql&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white) |
 | **Validation & Mapping** | ![FluentValidation](https://img.shields.io/badge/FluentValidation-2E8B57?style=flat-square) ![AutoMapper](https://img.shields.io/badge/AutoMapper-BE2EDD?style=flat-square) |
 | **Resilience** | ![Polly](https://img.shields.io/badge/Polly-8A2BE2?style=flat-square) — wait & retry, circuit breaker, timeout, fallback, bulkhead isolation |
 | **Caching** | ![Redis](https://img.shields.io/badge/Redis-FF4438?style=flat-square&logo=redis&logoColor=white) ![IDistributedCache](https://img.shields.io/badge/IDistributedCache-512BD4?style=flat-square&logo=dotnet&logoColor=white) |
-| **API Gateway** | ![Ocelot](https://img.shields.io/badge/Ocelot-5C2D91?style=flat-square) |
 | **Messaging** | ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=flat-square&logo=rabbitmq&logoColor=white) ![Service Bus](https://img.shields.io/badge/Azure%20Service%20Bus-0072C6?style=flat-square&logo=microsoftazure&logoColor=white) |
 | **Containers** | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) ![Compose](https://img.shields.io/badge/Docker%20Compose-2496ED?style=flat-square&logo=docker&logoColor=white) |
 | **Orchestration** | ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white) ![AKS](https://img.shields.io/badge/Azure%20AKS-0078D4?style=flat-square&logo=microsoftazure&logoColor=white) |
@@ -139,13 +137,101 @@ flowchart TB
 
 ## 🧩 The Services
 
-| Service | Responsibility | Database | API Style | Local URL |
-|---|---|---|---|---|
-| 🏷️ **Products** | Product catalogue: CRUD, search by name/category | ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat-square&logo=mysql&logoColor=white) | Minimal APIs | `http://localhost:6001` |
-| 👤 **Users** | Registration, login, user lookup | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) | Controllers | `http://localhost:5000` |
-| 📦 **Orders** | Order lifecycle + orchestration across services | ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white) | Controllers | `http://localhost:7000` |
+| Service | Responsibility | Database | API Style | Container port | Direct URL |
+|---|---|---|---|---|---|
+| 🚪 **API Gateway** | Routing, QoS, rate limiting | — | Ocelot config | `8080` | `http://localhost:4000` |
+| 🏷️ **Products** | Product catalogue: CRUD, search by name/category | ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat-square&logo=mysql&logoColor=white) | Minimal APIs | `8080` | `http://localhost:6001` |
+| 👤 **Users** | Registration, login, user lookup | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) | Controllers | `9090` | `http://localhost:5000` |
+| 📦 **Orders** | Order lifecycle + orchestration across services | ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white) | Controllers | `8080` | `http://localhost:7000` |
 
 **Orders is the hub.** When an order comes in, it calls Users to confirm who is buying and Products to confirm what is being bought, then persists the composed order document in MongoDB.
+
+**The gateway is the front door.** The direct URLs above stay published for local debugging, but clients should go through `http://localhost:4000/gateway/...`.
+
+---
+
+## 🚪 API Gateway
+
+A single ASP.NET Core host running [Ocelot](https://github.com/ThreeMammals/Ocelot) 23.4.3 with the Polly provider. There is no business logic in the gateway — the whole thing is configuration plus four lines of wiring.
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Configuration.AddJsonFile("ocelot.json", optional: false, reloadOnChange: true);
+builder.Services.AddOcelot().AddPolly();
+
+var app = builder.Build();
+await app.UseOcelot();
+app.Run();
+```
+
+`reloadOnChange: true` means route changes in `ocelot.json` are picked up without restarting the container.
+
+### Route table
+
+Every upstream path is namespaced under `/gateway/` and, as configured, ends with a trailing slash. Downstream hosts are Docker container names resolved over `ecommerce-network`.
+
+<details open>
+<summary><b>📦 Orders routes</b> → <code>ordersmicroservice.api:8080</code></summary>
+
+| Methods | Upstream (gateway) | Downstream (service) |
+|---|---|---|
+| `GET` `POST` `OPTIONS` | `/gateway/Orders/` | `/api/Orders` |
+| `GET` | `/gateway/Orders/search/orderid/{orderID}/` | `/api/Orders/search/orderid/{orderID}` |
+| `GET` | `/gateway/Orders/search/productid/{productID}/` | `/api/Orders/search/productid/{productID}` |
+| `GET` | `/gateway/Orders/search/userid/{userID}/` | `/api/Orders/search/userid/{userID}` |
+| `GET` | `/gateway/Orders/search/orderDate/{orderDate}/` | `/api/Orders/search/orderDate/{orderDate}` |
+| `PUT` `DELETE` `OPTIONS` | `/gateway/Orders/{orderID}/` | `/api/Orders/{orderID}` |
+
+</details>
+
+<details open>
+<summary><b>🏷️ Products routes</b> → <code>products-microservice:8080</code></summary>
+
+| Methods | Upstream (gateway) | Downstream (service) |
+|---|---|---|
+| `GET` `POST` `PUT` `OPTIONS` | `/gateway/Products/` | `/api/Products` |
+| `GET` | `/gateway/Products/search/product-id/{productID}/` | `/api/Products/search/product-id/{productID}` |
+| `GET` | `/gateway/Products/search/{searchString}/` | `/api/Products/search/{searchString}` |
+| `DELETE` `OPTIONS` | `/gateway/Products/{productID}/` | `/api/Products/{productID}` |
+
+</details>
+
+<details open>
+<summary><b>👤 Users routes</b> → <code>users-microservice:9090</code></summary>
+
+| Methods | Upstream (gateway) | Downstream (service) |
+|---|---|---|
+| `POST` `OPTIONS` | `/gateway/Users/Auth/register/` | `/api/Auth/register` |
+| `POST` `OPTIONS` | `/gateway/Users/Auth/login/` | `/api/Auth/login` |
+| `GET` | `/gateway/Users/{userID}/` | `/api/users/{userID}` |
+
+</details>
+
+`OPTIONS` is declared on every mutating route so browser CORS preflight requests reach the downstream service instead of being rejected at the edge.
+
+### Edge policies
+
+Cross-cutting concerns are applied per route rather than globally, so a noisy endpoint can be protected without penalising the rest of the API. Today they sit on the Products collection route — the busiest read path.
+
+| Route | Policy | Settings | Effect |
+|---|---|---|---|
+| `/gateway/Products/` | **QoS** *(Polly-backed)* | `ExceptionsAllowedBeforeBreaking: 3` · `DurationOfBreak: 1000` ms · `TimeoutValue: 500` ms | Circuit opens after 3 consecutive failures and stays open 1 s; any request slower than 500 ms is cut off |
+| `/gateway/Products/` | **Rate limiting** | `Limit: 3` per `Period: 10s` · `PeriodTimespan: 5` · `HttpStatusCode: 429` | A 4th request inside a 10-second window gets `429 Too Many Requests`; the client should back off 5 s |
+
+QoS is supplied by `Ocelot.Provider.Polly` — the `.AddPolly()` call in `Program.cs` is what activates it. Note that Ocelot's QoS `DurationOfBreak` and `TimeoutValue` are expressed in **milliseconds**, unlike the in-service Polly policies below which are configured in seconds.
+
+### Two layers of resilience
+
+The gateway and the Orders service both use Polly, but they guard different hops and are deliberately independent:
+
+| | Gateway (Ocelot QoS) | Orders service (in-process Polly) |
+|---|---|---|
+| **Protects** | Client → downstream service | Orders → Users / Products |
+| **Scope** | Per route, declarative in `ocelot.json` | Per HTTP client, composed in C# |
+| **Fails as** | `503` / `429` from the edge | Placeholder DTO, order still completes |
+
+A client hitting `/gateway/Products/` gets edge protection. An order placed through `/gateway/Orders/` gets edge routing *and* the internal Polly stack on the two calls Orders makes on its behalf.
 
 ---
 
@@ -196,7 +282,9 @@ Products expire an order of magnitude faster than users because price and stock 
 
 ---
 
-<!-- ## 🔄 How a Request Flows
+## 🔄 How a Request Flows
+
+Placing an order touches the gateway, all three services, Redis and MongoDB:
 
 ```mermaid
 sequenceDiagram
@@ -204,28 +292,65 @@ sequenceDiagram
     participant C as 🖥️ Client
     participant G as 🚪 Ocelot Gateway
     participant O as 📦 Orders Service
+    participant R as ⚡ Redis
     participant U as 👤 Users Service
     participant P as 🏷️ Products Service
     participant M as 🍃 MongoDB
 
-    C->>G: POST /api/orders
-    G->>O: route to orders-microservice
-    O->>U: GET /api/users/:userID
+    C->>G: POST /gateway/Orders/
+    Note over G: match upstream template,<br/>rewrite path, resolve<br/>ordersmicroservice.api:8080
+    G->>O: POST /api/Orders
+
+    O->>R: get user:{userID}
+    R-->>O: miss
+    O->>U: GET /api/users/{userID}
     U-->>O: user profile
-    O->>P: GET /api/products/search/product-id/:productID
-    P-->>O: product details (name, price, category)
-    Note over O,P: Polly wraps both calls —<br/>retry on transient faults,<br/>circuit breaker on repeated failure
+    O->>R: cache user (300 s / 100 s)
+
+    O->>R: get product:{productID}
+    R-->>O: miss
+    O->>P: GET /api/products/search/product-id/{productID}
+    P-->>O: name, price, category
+    O->>R: cache product (30 s / 10 s)
+
+    Note over O,P: Polly wraps both calls —<br/>retry + breaker + timeout on Users,<br/>fallback + bulkhead on Products
+
     O->>M: insert order document
     M-->>O: acknowledged
     O-->>G: 201 Created + OrderResponse
     G-->>C: order confirmation
-``` -->
+```
+
+On a cache hit, steps 5–7 and 9–11 collapse into a single Redis read and no HTTP call is made at all.
 
 ---
 
 ## 📡 API Reference
 
+Two ways in: through the gateway (`http://localhost:4000/gateway/...`, the intended path) or directly against a service port (useful when debugging one service in isolation). The gateway equivalents are listed in [API Gateway](#-api-gateway).
+
 <details open>
+<summary><b>🚪 API Gateway</b> — <code>http://localhost:4000</code></summary>
+
+| Method | Endpoint | Routes to |
+|---|---|---|
+| `GET` `POST` | `/gateway/Orders/` | Orders — list all / place an order |
+| `GET` | `/gateway/Orders/search/orderid/{orderID}/` | Orders — by ID |
+| `GET` | `/gateway/Orders/search/productid/{productID}/` | Orders — containing a product |
+| `GET` | `/gateway/Orders/search/userid/{userID}/` | Orders — placed by a user |
+| `GET` | `/gateway/Orders/search/orderDate/{orderDate}/` | Orders — by date (`yyyy-MM-dd`) |
+| `PUT` `DELETE` | `/gateway/Orders/{orderID}/` | Orders — update / delete |
+| `GET` `POST` `PUT` | `/gateway/Products/` | Products — list / add / update *(rate limited, QoS)* |
+| `GET` | `/gateway/Products/search/product-id/{productID}/` | Products — by GUID |
+| `GET` | `/gateway/Products/search/{searchString}/` | Products — search name and category |
+| `DELETE` | `/gateway/Products/{productID}/` | Products — delete |
+| `POST` | `/gateway/Users/Auth/register/` | Users — register |
+| `POST` | `/gateway/Users/Auth/login/` | Users — login |
+| `GET` | `/gateway/Users/{userID}/` | Users — profile by GUID |
+
+</details>
+
+<details>
 <summary><b>🏷️ Products Microservice</b> — <code>http://localhost:6001</code></summary>
 
 | Method | Endpoint | Description |
@@ -241,7 +366,7 @@ Validation failures return `400` with an RFC 7807 `ValidationProblem` payload gr
 
 </details>
 
-<details open>
+<details>
 <summary><b>👤 Users Microservice</b> — <code>http://localhost:5000</code></summary>
 
 | Method | Endpoint | Description |
@@ -254,7 +379,7 @@ Validation failures return `400` with an RFC 7807 `ValidationProblem` payload gr
 
 </details>
 
-<details open>
+<details>
 <summary><b>📦 Orders Microservice</b> — <code>http://localhost:7000</code></summary>
 
 | Method | Endpoint | Description |
@@ -272,17 +397,24 @@ Validation failures return `400` with an RFC 7807 `ValidationProblem` payload gr
 
 ### Quick smoke test
 
-```bash
-# List products
-curl http://localhost:6001/api/products
+All through the gateway. Keep the trailing slash — the upstream templates are configured with one.
 
-# Register a user
-curl -X POST http://localhost:5000/api/auth/register \
+```bash
+# List products via the gateway
+curl http://localhost:4000/gateway/Products/
+
+# Register a user via the gateway
+curl -X POST http://localhost:4000/gateway/Users/Auth/register/ \
   -H "Content-Type: application/json" \
   -d '{"email":"demo@example.com","password":"P@ssw0rd!","personName":"Demo User","gender":"Male"}'
 
-# List orders
-curl http://localhost:7000/api/orders
+# List orders via the gateway
+curl http://localhost:4000/gateway/Orders/
+
+# Trip the rate limiter — the 4th call inside 10s returns 429
+for i in 1 2 3 4; do
+  curl -s -o /dev/null -w "%{http_code}\n" http://localhost:4000/gateway/Products/
+done
 ```
 
 ---
@@ -294,11 +426,12 @@ curl http://localhost:7000/api/orders
 | Requirement | Notes |
 |---|---|
 | ![Docker](https://img.shields.io/badge/Docker%20Desktop-2496ED?style=flat-square&logo=docker&logoColor=white) | With Docker Compose v2 |
-| ![.NET](https://img.shields.io/badge/.NET%20SDK-512BD4?style=flat-square&logo=dotnet&logoColor=white) | Only needed to run services outside containers |
+| ![.NET](https://img.shields.io/badge/.NET%208%20SDK-512BD4?style=flat-square&logo=dotnet&logoColor=white) | Only needed to run services outside containers |
 
-### 1. Clone the three services side by side
+### 1. Clone the projects side by side
 
 ```bash
+git clone https://github.com/sayanpr8175/eCommerceSolution.ApiGateway.git
 git clone https://github.com/sayanpr8175/eCommerceSolution.ProductsService.git
 git clone https://github.com/sayanpr8175/eCommerceSolution.UsersService.git
 git clone https://github.com/sayanpr8175/eCommerceSolution.OrdersService.git
@@ -323,10 +456,12 @@ docker compose up -d --build
 
 ```bash
 docker compose ps
+curl http://localhost:4000/gateway/Products/
 ```
 
 | Container | Host port | Purpose |
 |---|---|---|
+| `apigateway` | `4000` | Ocelot API Gateway — single entry point |
 | `ordersmicroservice.api` | `7000` | Orders API |
 | `products-microservice` | `6001` | Products API |
 | `users-microservice` | `5000` | Users API |
@@ -341,6 +476,23 @@ Seed scripts placed in `./mongodb-scripts`, `./mysql-scripts`, and `./postgres-s
 
 ```yaml
 services:
+  apigateway:
+    image: apigateway:latest
+    build:
+      context: .
+      dockerfile: ApiGateway/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8080
+    ports:
+      - "4000:8080"
+    networks:
+      - ecommerce-network
+    depends_on:
+      - ordersmicroservice.api
+      - products-microservice
+      - users-microservice
+
   ordersmicroservice.api:
     image: ordersmicroserviceapi
     build:
@@ -448,7 +600,30 @@ networks:
 
 ## ⚙️ Configuration
 
-Every service is configured entirely through environment variables — no connection strings baked into images.
+The three services are configured entirely through environment variables — no connection strings baked into images. The gateway is the exception: its routing lives in `ocelot.json`.
+
+<details>
+<summary><b>🚪 API Gateway</b></summary>
+
+Routing is declarative, in `ocelot.json`, loaded at startup with `reloadOnChange: true`.
+
+| Setting | Value | Purpose |
+|---|---|---|
+| `GlobalConfiguration.BaseUrl` | `http://localhost:4000` | The externally visible gateway address, used when Ocelot needs to build absolute URLs |
+| `DownstreamHostAndPorts` | container names + internal ports | Resolved via Docker DNS on `ecommerce-network` |
+| `UpstreamScheme` | `http` | Plain HTTP locally; terminate TLS at the edge before deploying |
+
+Downstream targets, as configured:
+
+| Service | Host | Port |
+|---|---|---|
+| Orders | `ordersmicroservice.api` | `8080` |
+| Products | `products-microservice` | `8080` |
+| Users | `users-microservice` | `9090` |
+
+Because the hosts are container names, the gateway **must** run on `ecommerce-network`. Running it on the host machine instead will fail to resolve them.
+
+</details>
 
 <details>
 <summary><b>📦 Orders Microservice</b></summary>
@@ -497,7 +672,7 @@ Every service is configured entirely through environment variables — no connec
 
 ## 🕸️ Docker Networks
 
-Four bridge networks enforce the boundaries between services:
+Four bridge networks enforce the boundaries between components:
 
 ```mermaid
 flowchart LR
@@ -511,14 +686,19 @@ flowchart LR
         U1["Users"] --- G1[("PostgreSQL")]
     end
     subgraph n4["🌐 ecommerce-network"]
-        O2["Orders"] --- P2["Products"]
-        O2 --- U2["Users"]
+        GW["Gateway"] --- O2["Orders"]
+        GW --- P2["Products"]
+        GW --- U2["Users"]
+        O2 --- P2
+        O2 --- U2
     end
 
     classDef svc fill:#512BD4,stroke:#2f1a80,color:#ffffff
     classDef db fill:#1f6f43,stroke:#124228,color:#ffffff
+    classDef edgeNode fill:#0f4c81,stroke:#08304f,color:#ffffff
     class O1,P1,U1,O2,P2,U2 svc
     class M1,Y1,G1 db
+    class GW edgeNode
 ```
 
 | Network | Members | Why |
@@ -526,9 +706,9 @@ flowchart LR
 | `orders-mongodb-network` | Orders + MongoDB | Private data channel |
 | `products-mysql-network` | Products + MySQL | Private data channel |
 | `users-postgres-network` | Users + PostgreSQL | Private data channel |
-| `ecommerce-network` | All three services | Service-to-service HTTP only |
+| `ecommerce-network` | Gateway + all three services | Edge routing and service-to-service HTTP only |
 
-Services resolve each other by container name via Docker's built-in DNS — no hard-coded IPs anywhere.
+Components resolve each other by container name via Docker's built-in DNS — no hard-coded IPs anywhere. The gateway is the only container whose port is meant to be published publicly; the per-service host ports exist for local debugging.
 
 ---
 
@@ -547,13 +727,15 @@ Services resolve each other by container name via Docker's built-in DNS — no h
 - [x] ![Polly](https://img.shields.io/badge/Polly-8A2BE2?style=flat-square) **Fault tolerance** — retry, circuit breaker and timeout on Users calls; fallback and bulkhead isolation on Products calls
 - [x] ![Redis](https://img.shields.io/badge/Redis-FF4438?style=flat-square&logo=redis&logoColor=white) **Distributed caching** — read-through cache for user and product lookups, with per-entity TTLs
 - [x] Graceful degradation — placeholder DTOs instead of thrown exceptions when a dependency is unhealthy
+- [x] ![Ocelot](https://img.shields.io/badge/Ocelot-5C2D91?style=flat-square) **API Gateway** — single entry point on `:4000`, 13 routes across all three services, path rewriting, CORS preflight passthrough, hot-reloading config
+- [x] **Edge QoS** — Polly-backed circuit breaker and timeout on the Products collection route
+- [x] **Rate limiting** — 3 requests per 10 seconds on the Products collection route, `429` on breach
 
-### 🚧 In Progress
-
-- [ ] ![Ocelot](https://img.shields.io/badge/Ocelot-5C2D91?style=flat-square) **API Gateway** — single entry point, routing, aggregation, rate limiting
+- [x] **Gateway response caching** — `FileCacheOptions` added.
 
 ### 📅 Planned
 
+- [ ] **JWT authentication at the edge** — validate tokens in the gateway so downstream services stop re-authenticating
 - [ ] ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=flat-square&logo=rabbitmq&logoColor=white) **Async messaging** — move order events off the request path into a message broker
 - [ ] ![Kubernetes](https://img.shields.io/badge/AKS-326CE5?style=flat-square&logo=kubernetes&logoColor=white) **Azure Kubernetes Service** — deployments, services, ingress, HPA
 - [ ] ![Service Bus](https://img.shields.io/badge/Azure%20Service%20Bus-0072C6?style=flat-square&logo=microsoftazure&logoColor=white) **Managed messaging** in the cloud
@@ -607,6 +789,9 @@ flowchart TB
     class CACHE,DBS store
 ```
 
+The Ocelot gateway stays inside the cluster and Azure API Management fronts it, so subscription keys, quotas and the developer portal are handled by the platform while route-level QoS stays in `ocelot.json`.
+
+---
 
 <div align="center">
 
