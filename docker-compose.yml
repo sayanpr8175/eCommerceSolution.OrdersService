@@ -27,6 +27,8 @@ services:
      - ecommerce-network
     depends_on:
      - mongodb-container
+     - rabbitmq
+    entrypoint: ["/bin/sh", "-c", "sleep 30 && exec dotnet OrdersMicroservice.API.dll"]
   
   mongodb-container:
    image: mongo:latest
@@ -68,7 +70,7 @@ services:
     - ecommerce-network
    depends_on:
     - mysql-container
-  
+    - rabbitmq
   mysql-container:
    image: mysql:latest
    environment:

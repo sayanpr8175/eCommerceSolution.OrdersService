@@ -1,4 +1,4 @@
-﻿
+﻿using Amazon.Runtime.Internal.Util;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
@@ -9,14 +9,14 @@ using System.Text.Json;
 
 namespace eCommerce.OrdersMicroservice.BusinessLogicLayer.RabbitMQ;
 
-public class RabbitMQProductNameUpdateConsumer : IDisposable, IRabbitMQProductNameUpdateConsumer
+public class RabbitMQProductDeleteConsumer : IDisposable, IRabbitMQProductDeleteConsumer
 {
     private readonly IConfiguration _configuration;
 
     private readonly IModel _channel;
     private readonly IConnection _connection;
-    private readonly ILogger<RabbitMQProductNameUpdateConsumer> _logger;
-    public RabbitMQProductNameUpdateConsumer(IConfiguration configuration, ILogger<RabbitMQProductNameUpdateConsumer> logger)
+    private readonly ILogger<RabbitMQProductDeleteConsumer> _logger;
+    public RabbitMQProductDeleteConsumer(IConfiguration configuration, ILogger<RabbitMQProductDeleteConsumer> logger)
     {
         _configuration = configuration;
         _logger = logger;
@@ -50,8 +50,8 @@ public class RabbitMQProductNameUpdateConsumer : IDisposable, IRabbitMQProductNa
 
     public void Consume()
     {
-        string routingKey = "product.update.name";
-        string queueName = "orders.products.update.name.queue";
+        string routingKey = "product.delete";
+        string queueName = "orders.products.delete.queue";
 
         string exchangeName = _configuration["RabbitMQ_Products_Exchange"]!;
 
@@ -60,10 +60,10 @@ public class RabbitMQProductNameUpdateConsumer : IDisposable, IRabbitMQProductNa
             durable: true);
 
         // Creating the messge queue
-        _channel.QueueDeclare(queue:queueName,
-            durable: true, 
+        _channel.QueueDeclare(queue: queueName,
+            durable: true,
             exclusive: false,
-            autoDelete:false,
+            autoDelete: false,
             arguments: null);
 
         // Bind the queue to the msg channel
@@ -77,10 +77,11 @@ public class RabbitMQProductNameUpdateConsumer : IDisposable, IRabbitMQProductNa
             byte[] body = args.Body.ToArray();
             string message = Encoding.UTF8.GetString(body);
 
-            ProductNameUpdateMessage? productNameMessage = JsonSerializer.Deserialize<ProductNameUpdateMessage>(message);
+            ProductDeleteMessage? productDeletedMessage = JsonSerializer.Deserialize<ProductDeleteMessage>(message);
 
-            _logger.LogInformation($"Product Name has been updated:  {productNameMessage.ProductID}, " +
-                $" New Name: {productNameMessage.NewName}");
+            _logger.LogInformation($"Product has been deleted:  " +
+                $"{productDeletedMessage.ProductID}, " +
+                $" Product Name: {productDeletedMessage.ProductName}");
 
         };
 
