@@ -1,4 +1,7 @@
 ﻿
+
+using eCommerce.OrdersMicroservice.BusinessLogicLayer.DTO;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
@@ -16,7 +19,10 @@ public class RabbitMQProductDeleteConsumer : IDisposable, IRabbitMQProductDelete
     private readonly IModel _channel;
     private readonly IConnection _connection;
     private readonly ILogger<RabbitMQProductDeleteConsumer> _logger;
-    public RabbitMQProductDeleteConsumer(IConfiguration configuration, ILogger<RabbitMQProductDeleteConsumer> logger)
+    private readonly IDistributedCache _cache;
+    public RabbitMQProductDeleteConsumer(IConfiguration configuration,
+        ILogger<RabbitMQProductDeleteConsumer> logger,
+        IDistributedCache cache)
     {
         _configuration = configuration;
         _logger = logger;
@@ -37,6 +43,7 @@ public class RabbitMQProductDeleteConsumer : IDisposable, IRabbitMQProductDelete
         _connection = connectionFactory.CreateConnection();
 
         _channel = _connection.CreateModel();
+        _cache = cache;
 
     }
 
@@ -45,7 +52,6 @@ public class RabbitMQProductDeleteConsumer : IDisposable, IRabbitMQProductDelete
         _channel.Dispose();
         _connection.Dispose();
     }
-
 
 
     public void Consume()
@@ -85,21 +91,28 @@ public class RabbitMQProductDeleteConsumer : IDisposable, IRabbitMQProductDelete
 
         EventingBasicConsumer consumer = new EventingBasicConsumer(_channel);
 
-        consumer.Received += (sender, args) =>
+        consumer.Received += async (sender, args) =>
         {
             byte[] body = args.Body.ToArray();
             string message = Encoding.UTF8.GetString(body);
 
             ProductDeleteMessage? productDeletedMessage = JsonSerializer.Deserialize<ProductDeleteMessage>(message);
 
-            _logger.LogInformation($"Product has been deleted:  " +
-                $"{productDeletedMessage.ProductID}, " +
-                $" Product Name: {productDeletedMessage.ProductName}");
+            await HandleProductDeletion(productDeletedMessage.ProductID);
 
         };
 
         _channel.BasicConsume(queue: queueName, consumer: consumer, autoAck: true);
 
+    }
+
+    private async Task HandleProductDeletion(Guid productID)
+    {
+       
+        string cacheKeyForWrite = $"product:{productID}";
+        await _cache.RemoveAsync(cacheKeyForWrite);
+
+        _logger.LogInformation($"Product has been Deleted:  {productID} ");
     }
 }
 

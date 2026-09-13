@@ -76,8 +76,7 @@ public class ProductsMicroserviceClient
 
             string productObj = JsonSerializer.Serialize(product);
             DistributedCacheEntryOptions options = new DistributedCacheEntryOptions()
-                .SetAbsoluteExpiration(TimeSpan.FromSeconds(30))
-                .SetSlidingExpiration(TimeSpan.FromSeconds(10));
+                .SetAbsoluteExpiration(TimeSpan.FromSeconds(300));
 
             string cacheKeyForWrite = $"product:{productID}";
             await _distributedCache.SetStringAsync(cacheKeyForWrite, productObj, options);
