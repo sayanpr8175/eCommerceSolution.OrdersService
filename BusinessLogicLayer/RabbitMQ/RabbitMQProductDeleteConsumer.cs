@@ -1,4 +1,4 @@
-﻿using Amazon.Runtime.Internal.Util;
+﻿
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
@@ -50,13 +50,23 @@ public class RabbitMQProductDeleteConsumer : IDisposable, IRabbitMQProductDelete
 
     public void Consume()
     {
-        string routingKey = "product.delete";
+        //string routingKey = "product.delete";
+
+        var headers = new Dictionary<string, object>()
+        {
+          {"x-match", "all"},
+          {"event", "product.delete"},
+          {"RowCount", 1}
+        };
+
+        //string routingKey = "product.#";
         string queueName = "orders.products.delete.queue";
 
         string exchangeName = _configuration["RabbitMQ_Products_Exchange"]!;
 
         _channel.ExchangeDeclare(exchange: exchangeName,
-            type: ExchangeType.Direct,
+            // type: ExchangeType.Direct,
+            type: ExchangeType.Headers,
             durable: true);
 
         // Creating the messge queue
@@ -68,7 +78,10 @@ public class RabbitMQProductDeleteConsumer : IDisposable, IRabbitMQProductDelete
 
         // Bind the queue to the msg channel
 
-        _channel.QueueBind(queue: queueName, exchange: exchangeName, routingKey: routingKey);
+        _channel.QueueBind(queue: queueName, 
+            exchange: exchangeName,
+            routingKey: string.Empty,
+            arguments: headers);
 
         EventingBasicConsumer consumer = new EventingBasicConsumer(_channel);
 

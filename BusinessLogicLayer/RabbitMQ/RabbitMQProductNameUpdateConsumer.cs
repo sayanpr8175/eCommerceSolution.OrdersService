@@ -50,13 +50,25 @@ public class RabbitMQProductNameUpdateConsumer : IDisposable, IRabbitMQProductNa
 
     public void Consume()
     {
-        string routingKey = "product.update.name";
+        var headers = new Dictionary<string, object>()
+        {
+           { "x-match", "all"},
+           {"event", "product.update" },
+           {"field", "name"},
+           {"RowCount", 1 }
+        };
+
+        //string routingKey = "product.update.name";
+        // string routingKey = "product.#";
+        //string routingKey = "product.update.*";
         string queueName = "orders.products.update.name.queue";
 
         string exchangeName = _configuration["RabbitMQ_Products_Exchange"]!;
 
         _channel.ExchangeDeclare(exchange: exchangeName,
-            type: ExchangeType.Direct,
+            //type: ExchangeType.Direct,
+            //type: ExchangeType.Topic,
+            type: ExchangeType.Headers,
             durable: true);
 
         // Creating the messge queue
@@ -68,7 +80,10 @@ public class RabbitMQProductNameUpdateConsumer : IDisposable, IRabbitMQProductNa
 
         // Bind the queue to the msg channel
 
-        _channel.QueueBind(queue: queueName, exchange: exchangeName, routingKey: routingKey);
+        //_channel.QueueBind(queue: queueName, exchange: exchangeName, routingKey: routingKey);
+
+        // updated consumer for headers
+        _channel.QueueBind(queue: queueName, exchange: exchangeName, routingKey: string.Empty, arguments: headers);
 
         EventingBasicConsumer consumer = new EventingBasicConsumer(_channel);
 
