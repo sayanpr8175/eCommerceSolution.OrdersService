@@ -1,6 +1,8 @@
 ﻿
+using Azure.Messaging.ServiceBus;
 using eCommerce.OrdersMicroservice.BusinessLogicLayer.Mappers;
 using eCommerce.OrdersMicroservice.BusinessLogicLayer.RabbitMQ;
+using eCommerce.OrdersMicroservice.BusinessLogicLayer.ServiceBus;
 using eCommerce.OrdersMicroservice.BusinessLogicLayer.ServiceContracts;
 using eCommerce.OrdersMicroservice.BusinessLogicLayer.Services;
 using eCommerce.OrdersMicroservice.BusinessLogicLayer.Validators;
@@ -36,6 +38,13 @@ public static class DependencyInjection
         services.AddHostedService<RabbitMQProductNameUpdateHostedService>();
         services.AddHostedService<RabbitMQProductDeleteHostedService>();
 
+        // Servicebus
+
+        services.AddSingleton( _ =>
+            new ServiceBusClient(configuration["ServiceBus:ecommerce-servicebus-namespace"]));
+
+        services.AddSingleton<IServiceBusConsumer, ServiceBusProductUpdateConsumer>();
+        services.AddHostedService<ServiceBusProductNameUpdateHostedService>();
         return services;
     }
 }
